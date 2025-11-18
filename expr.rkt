@@ -4,7 +4,19 @@
 (require "type.rkt")
 (module+ test (require rackunit))
 
-(provide (struct-out expr))
+(provide (struct-out expr)
+         (struct-out vbl) define-vbls with-vbls fresh-vbl
+         (struct-out cnst)
+         ap ap? ap-head ap-arg
+         ab ab? ab-param ab-body
+         eq =
+         the the? the-param the-body
+         type-of expr-of-type/c vbl-of-type/c term? wff?
+         sig? sig-of expr-of-sig/c
+         FV closed? sentence?
+         occurs-in?
+         subst1
+         ⇔ ⊤ ⊥ ¬ ≠ ∧ ∨ ⇒ ∀ ∃ ∃!)
 
 ; Expressions
 (struct expr () #:transparent #:property prop:procedure (λ (e1 . e2s) (apply ap e1 e2s)))
