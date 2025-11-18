@@ -14,9 +14,9 @@
          type-of expr-of-type/c vbl-of-type/c term? wff?
          sig? sig-of expr-of-sig/c
          FV closed? sentence?
-         occurs-in?
-         subst1
-         ⇔ ⊤ ⊥ ¬ ≠ ∧ ∨ ⇒ ∀ ∃ ∃!)
+         occurs-in? occur-count
+         subst0 subst1 subst1-ok?
+         ⇔ ⊤ ⊥ ¬ ≠ ∧ ∨ ⇒ ∀ ∃ ∃! undef branch)
 
 ; Expressions
 (struct expr () #:transparent #:property prop:procedure (λ (e1 . e2s) (apply ap e1 e2s)))
@@ -24,9 +24,12 @@
 ; Variables
 (struct/contract vbl expr ([name symbol?] [type type?]) #:transparent)
 
+(define-syntax-parse-rule (define-vbl ?name:id ?type:expr)
+  (define ?name (vbl '?name ?type)))
+
 (define-syntax-parse-rule (define-vbls [?names:id ?types:expr] ...)
   (begin
-    (define ?names (vbl '?names ?types))
+    (define-vbl ?names ?types)
     ...))
 
 (define-syntax-parse-rule (with-vbls ([?names:id ?types:expr] ...) ?body)
@@ -189,6 +192,9 @@ potentially, a numeric suffix.) |#
     [(or (ap e1 e2) (= e1 e2)) (set-union (FV e1) (FV e2))]
     [(or (ab x e) (the x e))   (set-remove (FV e) x)]))
 
+(define/contract (free? x e) (-> vbl? expr? boolean?)
+  (set-member? (FV e) x))
+
 (define/contract (closed? e) (-> expr? boolean?)
   (set-empty? (FV e)))
 
@@ -202,7 +208,28 @@ potentially, a numeric suffix.) |#
     [(or (ap e1 e2) (= e1 e2))   (or (occurs-in? x e1) (occurs-in? x e2))]
     [(or (ab y e) (the y e))     (or (equal? x y) (occurs-in? x e))]))
 
-; Naïve substitution
+; Number of occurrences of a variable in an expression (whether free or bound)
+(define/contract (occur-count x e) (-> vbl? expr? natural?)
+  (match e
+    [(== x)                    1]
+    [(? (or/c vbl? cnst?) _)   0]
+    [(or (ap e1 e2) (= e1 e2)) (+ (occur-count x e1) (occur-count x e2))]
+    [(or (ab y e) (the y e))   (+ (if (equal? x y) 1 0) (occur-count x e))]))
+
+#| Fully naïve substitution --- replacing all occurrences of a variable in an expression, whether they
+be free or bound occurrences |#
+(define/contract (subst0 arg param body) (->i ([arg expr?]
+                                               [param (arg) (vbl-of-type/c (type-of arg))]
+                                               [body expr?])
+                                              [result (body) (expr-of-type/c (type-of body))])
+  (match body
+    [(== param)              arg]
+    [(? (or/c vbl? cnst?) _) body]
+    [(ap e1 e2)              (ap (subst1 arg param e1) (subst1 arg param e2))]
+    [(ab x e)                (ab x (subst1 arg param e))]
+    [(the x e)               (the x (subst1 arg param e))]))
+
+#| Somewhat naïve substitution --- replacing all free occurrences of a variable in an expression |#
 (define/contract (subst1 arg param body) (->i ([arg expr?]
                                                [param (arg) (vbl-of-type/c (type-of arg))]
                                                [body expr?])
@@ -215,6 +242,17 @@ potentially, a numeric suffix.) |#
     [(ab x e)                (ab x (subst1 arg param e))]
     [(the (== param) _)      body]
     [(the x e)               (the x (subst1 arg param e))]))
+
+; Capture-avoidingness of a somewhat naïve substitution
+(define/contract (subst1-ok? arg param body) (->i ([arg expr?]
+                                               [param (arg) (vbl-of-type/c (type-of arg))]
+                                               [body expr?])
+                                              [result boolean?])
+  (match body
+    [(? (or/c vbl? cnst?) _)   #t]
+    [(or (ap e1 e2) (= e1 e2)) (and (subst1-ok? arg param e1) (subst1-ok? arg param e2))]
+    [(or (ab x e) (the x e))   (or (not (free? param body))
+                                 (and (not (free? x arg)) (subst1-ok? arg param e)))]))
 
 ; Biconditionals (these are just equations where both sides are wffs)
 (define/contract (⇔ φ ψ) (-> wff? wff? wff?)
@@ -259,3 +297,16 @@ potentially, a numeric suffix.) |#
 (define/contract (∃! x φ) (-> vbl? wff? wff?)
   (let ([y (fresh-vbl x (λ (y) (not (occurs-in? y φ))))])
     (∃ x (∧ φ (∀ y (⇒ (subst1 y x φ) (= y x)))))))
+
+; Undefined values
+(define/contract (undef A) (->i ([A type?]) [result (A) (expr-of-type/c A)])
+  (define-vbl x A)
+  (the x (≠ x x)))
+
+; If-then-else
+(define/contract (branch φ e1 e2) (->i ([φ wff?] [e1 expr?] [e2 (e1) (expr-of-type/c (type-of e1))])
+                                       [result (e1) (expr-of-type/c (type-of e1))])
+  (define A (type-of e1))
+  (define-vbl x A)
+  (let ([x (fresh-vbl x (λ (x) (not (or (occurs-in? x φ) (occurs-in? x e1) (occurs-in? x e2)))))])
+    (the x (∧ (⇒ φ (= x e1)) (⇒ (¬ φ) (= x e2))))))
