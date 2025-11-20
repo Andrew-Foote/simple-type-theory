@@ -127,3 +127,13 @@ expression in place of x in ψ. |#
        "second premiss" φ "template after substitution" ψe1))
     (values π1 π2 ψ x (subst0 e2 x ψ))))
 
+(define/contract (conc π) (-> proof? wff?)
+  (match π
+    [(prop-vals0 _ _ φ)   φ]
+    [(leibniz0 _ _ _ φ)   φ]
+    [(ext0 _ _ _ φ)       φ]
+    [(βred0 _ _ _ φ)      φ]
+    [(proper-dd0 _ _ φ)   φ]
+    [(improper-dd0 _ _ φ) φ]
+    [(=s0 _ _ _ _ φ)      φ]))
+

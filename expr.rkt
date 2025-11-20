@@ -200,7 +200,8 @@ potentially, a numeric suffix.) |#
 
 (define sentence? (and/c wff? closed?))
 
-; Occurrence of a variable in an expression (whether free or bound)
+#| Occurrence of a variable in an expression (whether free or bound, and including occurrence in
+binders) |#
 (define/contract (occurs-in? x e) (-> vbl? expr? boolean?)
   (match e
     [(== x)                      #t]
@@ -208,16 +209,17 @@ potentially, a numeric suffix.) |#
     [(or (ap e1 e2) (= e1 e2))   (or (occurs-in? x e1) (occurs-in? x e2))]
     [(or (ab y e) (the y e))     (or (equal? x y) (occurs-in? x e))]))
 
-; Number of occurrences of a variable in an expression (whether free or bound)
+#| Number of occurrences of a variable in an expression (whether free or bound, but excluding
+occurrences in binders |#
 (define/contract (occur-count x e) (-> vbl? expr? natural?)
   (match e
     [(== x)                    1]
     [(? (or/c vbl? cnst?) _)   0]
     [(or (ap e1 e2) (= e1 e2)) (+ (occur-count x e1) (occur-count x e2))]
-    [(or (ab y e) (the y e))   (+ (if (equal? x y) 1 0) (occur-count x e))]))
+    [(or (ab y e) (the y e))   (occur-count x e)]))
 
 #| Fully naïve substitution --- replacing all occurrences of a variable in an expression, whether they
-be free or bound occurrences |#
+be free or bound occurrences, although not including occurrences in binders |#
 (define/contract (subst0 arg param body) (->i ([arg expr?]
                                                [param (arg) (vbl-of-type/c (type-of arg))]
                                                [body expr?])
